@@ -7,9 +7,9 @@ from PyQt6.QtCore import Qt
 import numpy as np
 
 class WindowInputGrid(QWidget):
-    def __init__(self, parent_menu):
+    def __init__(self, stacked_widget):
         super().__init__()
-        self.parent_menu = parent_menu
+        self.stacked = stacked_widget  # ini adalah QStackedWidget
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
 
@@ -49,15 +49,20 @@ class WindowInputGrid(QWidget):
 
         # Tombol kembali ke menu
         self.btn_back = QPushButton("Kembali ke Menu")
-        self.btn_back.clicked.connect(lambda: self.parent_menu.goto_page(0))
+        # gunakan fungsi bawaan QStackedWidget
+        self.btn_back.clicked.connect(lambda: self.stacked.setCurrentIndex(0))
         self.layout.addWidget(self.btn_back)
 
         self.inputs = []
+        # dictionary untuk menyimpan hasil input pengguna
+        self.saved_matrices = {}
 
     def create_grid(self):
         # Bersihkan grid lama
         for i in reversed(range(self.grid_layout.count())):
-            self.grid_layout.itemAt(i).widget().setParent(None)
+            widget = self.grid_layout.itemAt(i).widget()
+            if widget:
+                widget.setParent(None)
         self.inputs.clear()
 
         try:
@@ -81,10 +86,19 @@ class WindowInputGrid(QWidget):
         if not name or not name.isidentifier():
             QMessageBox.warning(self, "Error", "Nama matriks tidak valid.")
             return
+
         try:
-            mat = [[float(cell.text()) for cell in row] for row in self.inputs]
-            self.parent_menu.operands[name] = np.array(mat)
+            mat = np.array([[float(cell.text()) for cell in row] for row in self.inputs])
+
+            # simpan ke atribut global di QStackedWidget
+            if not hasattr(self.stacked, "matrices"):
+                self.stacked.matrices = {}
+            self.stacked.matrices[name] = mat
+
+            # juga simpan lokal
+            self.saved_matrices[name] = mat
+
             QMessageBox.information(self, "Sukses", f"Matriks '{name}' berhasil disimpan.")
-            self.parent_menu.goto_page(0)
+            self.stacked.setCurrentIndex(0)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Gagal menyimpan matriks: {e}")

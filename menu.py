@@ -1,72 +1,45 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog, QMessageBox
-from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
 from PyQt6.QtCore import Qt
-from file_utils import import_matrix, export_matrix
-from quiz_utils import get_random_quiz
 
 class MenuUtama(QWidget):
-    def __init__(self, stacked):
-        super().__init__()
+    def __init__(self, stacked=None, parent=None):
+        super().__init__(parent)
         self.stacked = stacked
-        self.operands = {}
+        self._build_ui()
 
+    def _build_ui(self):
         layout = QVBoxLayout()
-        self.setLayout(layout)
-
-        title = QLabel("Kalkulator Matriks & SPL")
-        title.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        title = QLabel("<h1>Matrix Calculator</h1>")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
+        btn_layout = QVBoxLayout()
 
-        btn1 = QPushButton("Input Matriks Grid")
-        btn1.clicked.connect(lambda: self.goto_page(1))
-        layout.addWidget(btn1)
+        # Buttons: Input, Process, Quiz, History, Exit
+        self.btn_input = QPushButton("Input / Matrices")
+        self.btn_proses = QPushButton("Process / Solver")
+        self.btn_quiz = QPushButton("Quiz")
+        self.btn_history = QPushButton("History")
+        self.btn_exit = QPushButton("Exit")
 
-        btn2 = QPushButton("Proses Operasi & SPL")
-        btn2.clicked.connect(lambda: self.goto_page(2))
-        layout.addWidget(btn2)
+        self.btn_input.clicked.connect(lambda: self.goto_page(1))
+        self.btn_proses.clicked.connect(lambda: self.goto_page(2))
+        self.btn_quiz.clicked.connect(lambda: self.goto_page(3))
+        self.btn_history.clicked.connect(lambda: self.goto_page(4))
+        self.btn_exit.clicked.connect(lambda: exit(0))
 
-        btn3 = QPushButton("Import Matriks")
-        btn3.clicked.connect(self.import_data)
-        layout.addWidget(btn3)
+        for w in [self.btn_input, self.btn_proses, self.btn_quiz, self.btn_history, self.btn_exit]:
+            btn_layout.addWidget(w)
 
-        btn4 = QPushButton("Export Matriks")
-        btn4.clicked.connect(self.export_data)
-        layout.addWidget(btn4)
+        layout.addLayout(btn_layout)
+        self.setLayout(layout)
 
-        btn5 = QPushButton("Quiz")
-        btn5.clicked.connect(self.start_quiz)
-        layout.addWidget(btn5)
-
-        btn6 = QPushButton("Keluar")
-        btn6.clicked.connect(lambda: self.close())
-        layout.addWidget(btn6)
-
-    def goto_page(self, index):
-        self.stacked.setCurrentIndex(index)
-
-    def import_data(self):
-        file, _ = QFileDialog.getOpenFileName(self, "Import File Matriks", "", "Text Files (*.txt)")
-        if file:
-            self.operands.update(import_matrix(file))
-            QMessageBox.information(self, "Sukses", "Matriks berhasil diimpor!")
-
-    def export_data(self):
-        file, _ = QFileDialog.getSaveFileName(self, "Simpan File Matriks", "", "Text Files (*.txt)")
-        if file:
-            export_matrix(file, self.operands)
-            QMessageBox.information(self, "Sukses", "Matriks berhasil diekspor!")
-
-    def start_quiz(self):
-        q, options, ans = get_random_quiz()
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Kuis Matematika")
-        msg.setText(q)
-        for opt in options:
-            msg.addButton(opt, QMessageBox.ButtonRole.ActionRole)
-        ret = msg.exec()
-        chosen = options[ret] if ret < len(options) else None
-        if chosen == ans:
-            QMessageBox.information(self, "Benar!", "Jawaban kamu benar 🎉")
-        else:
-            QMessageBox.warning(self, "Salah", f"Jawaban salah! Yang benar: {ans}")
+    def goto_page(self, idx):
+        # idx is stacked index (0-based)
+        if self.stacked is None:
+            return
+        try:
+            # safeguard: only set if index exists
+            if 0 <= idx < self.stacked.count():
+                self.stacked.setCurrentIndex(idx)
+        except Exception:
+            pass
