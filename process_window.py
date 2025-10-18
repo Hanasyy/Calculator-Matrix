@@ -159,14 +159,12 @@ class WindowProses(QWidget):
             op = self.op_combo.currentText()
             out = []
 
-            # ambil matriks A
             if self.comboA.currentIndex() > 0:
                 A = self.stacked.matrices[self.comboA.currentText()]
             else:
                 txtA = self.textA.toPlainText().strip()
                 A = self.parse_matrix(txtA) if "\n" in txtA else self.parse_vector(txtA)
 
-            # ambil matriks B
             B = None
             if self.comboB.currentIndex() > 0:
                 B = self.stacked.matrices[self.comboB.currentText()]
@@ -227,5 +225,62 @@ class WindowProses(QWidget):
                 out.append(f"A×B = {np.cross(A, B)}")
 
             self.steps_area.setPlainText("\n".join(out))
+            self.last_steps = out
+
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
+
+    # ====================================================
+    # EXPORT / SAVE / LOAD / HISTORY
+    # ====================================================
+    def on_export(self):
+        if not self.last_steps:
+            QMessageBox.information(self, "No steps", "Tidak ada hasil untuk diexport.")
+            return
+        fn, _ = QFileDialog.getSaveFileName(self, "Export Steps", filter="Text Files (*.txt)")
+        if not fn: return
+        with open(fn, "w", encoding="utf-8") as f:
+            f.write("\n".join(self.last_steps))
+        QMessageBox.information(self, "Exported", f"Hasil disimpan di {fn}")
+
+    def on_save_case(self):
+        try:
+            data = {
+                "A": self.textA.toPlainText().strip(),
+                "B": self.textB.toPlainText().strip(),
+                "operation": self.op_combo.currentText()
+            }
+            arr = []
+            if os.path.exists(self.tests_file):
+                with open(self.tests_file, "r") as f:
+                    arr = json.load(f)
+            arr.append(data)
+            with open(self.tests_file, "w") as f:
+                json.dump(arr, f, indent=2)
+            QMessageBox.information(self, "Saved", "Test case disimpan ke user_tests.json")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Gagal menyimpan: {e}")
+
+    def on_load_case(self):
+        if not os.path.exists(self.tests_file):
+            QMessageBox.warning(self, "No file", "Belum ada test case tersimpan.")
+            return
+        with open(self.tests_file, "r") as f:
+            arr = json.load(f)
+        if not arr:
+            QMessageBox.information(self, "Empty", "Belum ada test case.")
+            return
+        last = arr[-1]
+        self.textA.setPlainText(last.get("A", ""))
+        self.textB.setPlainText(last.get("B", ""))
+        idx = self.op_combo.findText(last.get("operation", ""))
+        if idx >= 0:
+            self.op_combo.setCurrentIndex(idx)
+        QMessageBox.information(self, "Loaded", "Test case terakhir berhasil dimuat.")
+
+    def on_save_history(self):
+        if not self.last_steps:
+            QMessageBox.information(self, "No result", "Belum ada hasil yang bisa disimpan ke history.")
+            return
+        self.history.add({"operation": self.op_combo.currentText(), "result": self.last_steps[:8]})
+        QMessageBox.information(self, "Saved", "Hasil disimpan ke history.")
