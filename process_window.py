@@ -14,10 +14,8 @@ from history import History
 
 class WindowProses(QWidget):
     """
-    Halaman proses utama:
-    - Menjalankan operasi matriks (Solve OBE, Homogen, Determinan, Invers, RREF)
-    - Menyimpan hasil ke history
-    - Menyimpan & memuat test case (dinamis)
+    Halaman utama proses kalkulator matriks dan vektor.
+    Terhubung otomatis dengan hasil input dari WindowInputGrid.
     """
     def __init__(self, stacked=None, parent=None):
         super().__init__(parent)
@@ -34,7 +32,7 @@ class WindowProses(QWidget):
     # ====================================================
     def _build_ui(self):
         layout = QVBoxLayout()
-        title = QLabel("<h2>Process / Solver (Dynamic Test Enabled)</h2>")
+        title = QLabel("<h2>Matrix & Vector Processor (Dynamic Test)</h2>")
         layout.addWidget(title)
 
         # Pilihan operasi
@@ -46,29 +44,50 @@ class WindowProses(QWidget):
             "Solve Homogeneous (A·x = 0)",
             "RREF Only",
             "Determinant of A",
-            "Inverse of A"
+            "Inverse of A",
+            "A + B",
+            "A - B",
+            "A × B",
+            "Transpose (Aᵗ)",
+            "Pengenalan Jenis Matriks A",
+            "Vector Addition",
+            "Vector Subtraction",
+            "Dot Product (A·B)",
+            "Cross Product (A×B)"
         ])
         op_layout.addWidget(self.op_combo)
         layout.addLayout(op_layout)
 
-        # Input Matriks A
+        # Input area
         in_box = QGroupBox("Input Matriks / Vektor")
         in_layout = QVBoxLayout()
-        lblA = QLabel("Matriks A:")
-        self.textA = QTextEdit()
-        self.textA.setPlaceholderText("contoh:\n2 -1 0 3\n1 4 -2 0\n0 5 3 -1\n2 0 1 2")
+
+        lblA = QLabel("Matriks / Vektor A:")
         in_layout.addWidget(lblA)
+
+        self.comboA = QComboBox()
+        self.comboA.addItem("(Belum ada matriks tersimpan)")
+        in_layout.addWidget(self.comboA)
+
+        self.textA = QTextEdit()
+        self.textA.setPlaceholderText("contoh matriks:\n1 2 3\n4 5 6\natau vektor:\n1 2 3")
         in_layout.addWidget(self.textA)
 
-        lblB = QLabel("Vektor B (opsional):")
-        self.textB = QTextEdit()
-        self.textB.setPlaceholderText("contoh:\n9 11 4 7")
+        lblB = QLabel("Matriks / Vektor B (opsional):")
         in_layout.addWidget(lblB)
+
+        self.comboB = QComboBox()
+        self.comboB.addItem("(Belum ada matriks tersimpan)")
+        in_layout.addWidget(self.comboB)
+
+        self.textB = QTextEdit()
+        self.textB.setPlaceholderText("contoh:\n7 8 9")
         in_layout.addWidget(self.textB)
+
         in_box.setLayout(in_layout)
         layout.addWidget(in_box)
 
-        # Tombol aksi
+        # Tombol aksi utama
         btn_layout = QHBoxLayout()
         self.solve_btn = QPushButton("Run Operation")
         self.solve_btn.clicked.connect(self.on_run)
@@ -80,72 +99,86 @@ class WindowProses(QWidget):
         self.load_btn.clicked.connect(self.on_load_case)
         self.save_hist_btn = QPushButton("Save Result to History")
         self.save_hist_btn.clicked.connect(self.on_save_history)
-        for b in [self.solve_btn, self.export_btn, self.save_btn, self.load_btn, self.save_hist_btn]:
+        self.refresh_btn = QPushButton("🔄 Refresh Daftar Matriks")
+        self.refresh_btn.clicked.connect(self.refresh_matrix_list)
+
+        for b in [self.solve_btn, self.export_btn, self.save_btn, self.load_btn, self.save_hist_btn, self.refresh_btn]:
             btn_layout.addWidget(b)
         layout.addLayout(btn_layout)
 
-        # Output steps
+        # Output area
         self.steps_area = QTextEdit()
         self.steps_area.setReadOnly(True)
         self.steps_area.setPlaceholderText("Langkah dan hasil operasi akan tampil di sini...")
         layout.addWidget(self.steps_area, stretch=1)
 
+        # Tombol kembali ke menu
+        back_layout = QHBoxLayout()
+        self.back_btn = QPushButton("⬅️  Kembali ke Menu Utama")
+        self.back_btn.clicked.connect(lambda: self.stacked.setCurrentIndex(0))
+        back_layout.addWidget(self.back_btn)
+        layout.addLayout(back_layout)
+
         self.setLayout(layout)
 
     # ====================================================
-    # PARSE
+    # REFRESH DROPDOWN MATRIX LIST
+    # ====================================================
+    def refresh_matrix_list(self):
+        """Ambil matriks tersimpan dari halaman input"""
+        self.comboA.clear()
+        self.comboB.clear()
+
+        if hasattr(self.stacked, "matrices") and self.stacked.matrices:
+            names = list(self.stacked.matrices.keys())
+            self.comboA.addItem("(Pilih matriks tersimpan atau ketik manual)")
+            self.comboB.addItem("(Pilih matriks tersimpan atau ketik manual)")
+            self.comboA.addItems(names)
+            self.comboB.addItems(names)
+        else:
+            self.comboA.addItem("(Belum ada matriks tersimpan)")
+            self.comboB.addItem("(Belum ada matriks tersimpan)")
+
+    # ====================================================
+    # PARSING INPUT
     # ====================================================
     def parse_matrix(self, txt):
         lines = [l.strip() for l in txt.splitlines() if l.strip()]
-        if not lines:
-            return None
         mat = [[float(x) for x in ln.split()] for ln in lines]
-        cols = {len(r) for r in mat}
-        if len(cols) != 1:
-            raise ValueError("Jumlah kolom tiap baris tidak konsisten.")
         return np.array(mat, dtype=float)
 
     def parse_vector(self, txt):
-        if not txt.strip():
-            return None
-        vals = []
-        for ln in txt.splitlines():
-            if ln.strip():
-                vals.extend(ln.split())
-        return np.array([float(v) for v in vals], dtype=float)
+        vals = [float(x) for x in txt.split()]
+        return np.array(vals, dtype=float)
 
     # ====================================================
-    # EVENT HANDLERS
+    # OPERASI UTAMA
     # ====================================================
     def on_run(self):
-        """ Jalankan operasi sesuai pilihan """
         try:
-            A = self.parse_matrix(self.textA.toPlainText())
-            if A is None:
-                QMessageBox.warning(self, "Input error", "Matriks A belum diisi.")
-                return
-            B = self.parse_vector(self.textB.toPlainText())
             op = self.op_combo.currentText()
             out = []
 
-            if op == "Solve Non-homogeneous (A·x = B)":
-                if B is None:
-                    QMessageBox.warning(self, "Input error", "Vektor B diperlukan untuk operasi ini.")
-                    return
-                res, steps, status = solve_obe(A, B)
-                out.append(f"Status: {status}\n")
-                out.extend(steps)
-                if status == "unique":
-                    out.append(f"\nSolution:\n{res}")
-                elif status == "infinite":
-                    particular, free_vars, basis = res
-                    out.append(f"\nParticular: {particular}")
-                    out.append(f"Free vars: {free_vars}")
-                    for i, v in enumerate(basis):
-                        out.append(f"t{i+1} basis: {v}")
-                elif status == "inconsistent":
-                    out.append("No solution (inconsistent).")
+            # ambil matriks A
+            if self.comboA.currentIndex() > 0:
+                A = self.stacked.matrices[self.comboA.currentText()]
+            else:
+                txtA = self.textA.toPlainText().strip()
+                A = self.parse_matrix(txtA) if "\n" in txtA else self.parse_vector(txtA)
 
+            # ambil matriks B
+            B = None
+            if self.comboB.currentIndex() > 0:
+                B = self.stacked.matrices[self.comboB.currentText()]
+            elif self.textB.toPlainText().strip():
+                txtB = self.textB.toPlainText().strip()
+                B = self.parse_matrix(txtB) if "\n" in txtB else self.parse_vector(txtB)
+
+            # ==== operasi ====
+            if op == "Solve Non-homogeneous (A·x = B)":
+                res, steps, status = solve_obe(A, B)
+                out.append(f"Status: {status}")
+                out.extend(steps)
             elif op == "Solve Homogeneous (A·x = 0)":
                 free_vars, basis = solve_homogeneous(A)
                 if not basis:
@@ -154,94 +187,45 @@ class WindowProses(QWidget):
                     out.append(f"Free vars: {free_vars}")
                     for i, v in enumerate(basis):
                         out.append(f"Basis vector {i+1}: {v}")
-
+            elif op == "A + B":
+                out.append("A + B =\n" + cetak_matriks(A + B))
+            elif op == "A - B":
+                out.append("A - B =\n" + cetak_matriks(A - B))
+            elif op == "A × B":
+                out.append("A × B =\n" + cetak_matriks(A @ B))
+            elif op == "Transpose (Aᵗ)":
+                out.append("Aᵗ =\n" + cetak_matriks(A.T))
+            elif op == "Determinant of A":
+                out.append(f"det(A) = {det(A)}")
+            elif op == "Inverse of A":
+                out.append("A⁻¹ =\n" + cetak_matriks(inverse(A)))
             elif op == "RREF Only":
                 R, piv, steps = rref_with_steps(A)
                 out.append("RREF Result:\n" + cetak_matriks(R))
-                out.append("\nSteps:")
                 out.extend(steps)
-
-            elif op == "Determinant of A":
-                out.append(f"det(A) = {det(A)}")
-
-            elif op == "Inverse of A":
-                invA = inverse(A)
-                out.append("A⁻¹ =\n" + cetak_matriks(invA))
-
-            else:
-                out.append("Operasi belum diimplementasikan.")
+            elif op == "Pengenalan Jenis Matriks A":
+                rows, cols = A.shape
+                info = [f"Ukuran: {rows}×{cols}"]
+                if rows == cols:
+                    info.append("Persegi ✅")
+                    if np.allclose(A, np.eye(rows)): info.append("→ Identitas")
+                    if np.allclose(A, A.T): info.append("→ Simetris")
+                    if np.allclose(A, np.triu(A)): info.append("→ Segitiga Atas")
+                    if np.allclose(A, np.tril(A)): info.append("→ Segitiga Bawah")
+                    if np.count_nonzero(A - np.diag(np.diag(A))) == 0: info.append("→ Diagonal")
+                    info.append("→ Singular (det=0)" if round(det(A)) == 0 else "→ Non-Singular (det≠0)")
+                else:
+                    info.append("Bukan persegi ❌")
+                out.extend(info)
+            elif op == "Vector Addition":
+                out.append(f"A + B = {A + B}")
+            elif op == "Vector Subtraction":
+                out.append(f"A - B = {A - B}")
+            elif op == "Dot Product (A·B)":
+                out.append(f"A·B = {np.dot(A, B)}")
+            elif op == "Cross Product (A×B)":
+                out.append(f"A×B = {np.cross(A, B)}")
 
             self.steps_area.setPlainText("\n".join(out))
-            self.last_result = {"operation": op, "output": out}
-            self.last_steps = out
-            self.last_status = "ok"
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Terjadi kesalahan:\n{e}")
-
-    def on_export(self):
-        if not self.last_steps:
-            QMessageBox.information(self, "No steps", "Tidak ada hasil untuk diexport.")
-            return
-        fn, _ = QFileDialog.getSaveFileName(
-            self, "Export Steps to TXT", filter="Text Files (*.txt);;All Files (*)"
-        )
-        if not fn:
-            return
-        try:
-            with open(fn, "w", encoding="utf-8") as f:
-                f.write("\n".join(self.last_steps))
-            QMessageBox.information(self, "Exported", f"Langkah disimpan ke {fn}")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Gagal export: {e}")
-
-    def on_save_case(self):
-        """ Simpan test case ke user_tests.json """
-        try:
-            data = {
-                "A": self.textA.toPlainText().strip(),
-                "B": self.textB.toPlainText().strip(),
-                "operation": self.op_combo.currentText()
-            }
-            if os.path.exists(self.tests_file):
-                with open(self.tests_file, "r") as f:
-                    arr = json.load(f)
-            else:
-                arr = []
-            arr.append(data)
-            with open(self.tests_file, "w") as f:
-                json.dump(arr, f, indent=2)
-            QMessageBox.information(self, "Saved", "Test case disimpan ke user_tests.json")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Gagal menyimpan: {e}")
-
-    def on_load_case(self):
-        """ Muat test case terakhir dari user_tests.json """
-        if not os.path.exists(self.tests_file):
-            QMessageBox.warning(self, "No file", "Belum ada test case tersimpan.")
-            return
-        try:
-            with open(self.tests_file, "r") as f:
-                arr = json.load(f)
-            if not arr:
-                QMessageBox.information(self, "Empty", "Belum ada test case tersimpan.")
-                return
-            last = arr[-1]
-            self.textA.setPlainText(last.get("A", ""))
-            self.textB.setPlainText(last.get("B", ""))
-            op = last.get("operation", "")
-            idx = self.op_combo.findText(op)
-            if idx >= 0:
-                self.op_combo.setCurrentIndex(idx)
-            QMessageBox.information(self, "Loaded", "Test case terakhir berhasil dimuat.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Gagal memuat: {e}")
-
-    def on_save_history(self):
-        if not self.last_result:
-            QMessageBox.information(self, "No result", "Belum ada hasil yang bisa disimpan ke history.")
-            return
-        self.history.add({
-            "operation": self.last_result.get("operation"),
-            "result": self.last_result.get("output")[:6],
-        })
-        QMessageBox.information(self, "Saved", "Hasil disimpan ke history.")
+            QMessageBox.critical(self, "Error", str(e))

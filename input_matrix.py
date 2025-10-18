@@ -9,7 +9,7 @@ import numpy as np
 class WindowInputGrid(QWidget):
     def __init__(self, stacked_widget):
         super().__init__()
-        self.stacked = stacked_widget  # ini adalah QStackedWidget
+        self.stacked = stacked_widget
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
 
@@ -18,12 +18,10 @@ class WindowInputGrid(QWidget):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.layout.addWidget(title)
 
-        # Nama matriks
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("Nama matriks (contoh: A)")
         self.layout.addWidget(self.name_edit)
 
-        # Ukuran matriks
         size_layout = QHBoxLayout()
         self.rows_edit = QLineEdit("3")
         self.cols_edit = QLineEdit("3")
@@ -33,44 +31,30 @@ class WindowInputGrid(QWidget):
         size_layout.addWidget(self.cols_edit)
         self.layout.addLayout(size_layout)
 
-        # Tombol buat grid
         self.btn_grid = QPushButton("Buat Grid Matriks")
         self.btn_grid.clicked.connect(self.create_grid)
         self.layout.addWidget(self.btn_grid)
 
-        # Area grid untuk input elemen
         self.grid_layout = QGridLayout()
         self.layout.addLayout(self.grid_layout)
 
-        # Tombol simpan
         self.btn_save = QPushButton("Simpan Matriks")
         self.btn_save.clicked.connect(self.save_matrix)
         self.layout.addWidget(self.btn_save)
 
-        # Tombol kembali ke menu
         self.btn_back = QPushButton("Kembali ke Menu")
-        # gunakan fungsi bawaan QStackedWidget
         self.btn_back.clicked.connect(lambda: self.stacked.setCurrentIndex(0))
         self.layout.addWidget(self.btn_back)
 
         self.inputs = []
-        # dictionary untuk menyimpan hasil input pengguna
-        self.saved_matrices = {}
 
     def create_grid(self):
-        # Bersihkan grid lama
         for i in reversed(range(self.grid_layout.count())):
-            widget = self.grid_layout.itemAt(i).widget()
-            if widget:
-                widget.setParent(None)
+            self.grid_layout.itemAt(i).widget().setParent(None)
         self.inputs.clear()
 
-        try:
-            rows = int(self.rows_edit.text())
-            cols = int(self.cols_edit.text())
-        except ValueError:
-            QMessageBox.warning(self, "Error", "Masukkan angka valid untuk baris dan kolom.")
-            return
+        rows = int(self.rows_edit.text())
+        cols = int(self.cols_edit.text())
 
         for i in range(rows):
             row_inputs = []
@@ -87,18 +71,17 @@ class WindowInputGrid(QWidget):
             QMessageBox.warning(self, "Error", "Nama matriks tidak valid.")
             return
 
-        try:
-            mat = np.array([[float(cell.text()) for cell in row] for row in self.inputs])
+        mat = np.array([[float(cell.text()) for cell in row] for row in self.inputs])
+        if not hasattr(self.stacked, "matrices"):
+            self.stacked.matrices = {}
+        self.stacked.matrices[name] = mat
 
-            # simpan ke atribut global di QStackedWidget
-            if not hasattr(self.stacked, "matrices"):
-                self.stacked.matrices = {}
-            self.stacked.matrices[name] = mat
+        QMessageBox.information(self, "Sukses", f"Matriks '{name}' berhasil disimpan.")
 
-            # juga simpan lokal
-            self.saved_matrices[name] = mat
+        # Auto-refresh dropdown di WindowProses
+        for i in range(self.stacked.count()):
+            w = self.stacked.widget(i)
+            if hasattr(w, "refresh_matrix_list"):
+                w.refresh_matrix_list()
 
-            QMessageBox.information(self, "Sukses", f"Matriks '{name}' berhasil disimpan.")
-            self.stacked.setCurrentIndex(0)
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Gagal menyimpan matriks: {e}")
+        self.stacked.setCurrentIndex(0)
