@@ -7,7 +7,8 @@ import os, json, numpy as np
 
 from matrix_utils import (
     solve_obe, cetak_matriks, solve_homogeneous,
-    det, inverse, rref_with_steps
+    det, inverse, rref_with_steps,
+    norm, projection, angle_between
 )
 from history import History
 
@@ -27,12 +28,13 @@ class WindowProses(QWidget):
         self.last_steps = None
         self.last_status = None
 
+
     # ====================================================
     # BUILD UI
     # ====================================================
     def _build_ui(self):
         layout = QVBoxLayout()
-        title = QLabel("<h2>Matrix & Vector Processor (Dynamic Test)</h2>")
+        title = QLabel("<h2>Proses Perhitungan Matriks dan Vektor</h2>")
         layout.addWidget(title)
 
         # Pilihan operasi
@@ -40,20 +42,29 @@ class WindowProses(QWidget):
         op_layout.addWidget(QLabel("Pilih Operasi:"))
         self.op_combo = QComboBox()
         self.op_combo.addItems([
-            "Solve Non-homogeneous (A·x = B)",
-            "Solve Homogeneous (A·x = 0)",
-            "RREF Only",
-            "Determinant of A",
-            "Inverse of A",
+            "Non-homogen (A·x = B)",
+            "Homogen (A·x = 0)",
+            "OBE",
+            "Determinan A",
+            "Determinan B",
+            "Inverse A",
+            "Inverse B",
             "A + B",
             "A - B",
             "A × B",
+            "B × A",
             "Transpose (Aᵗ)",
+            "Transpose (Bᵗ)",
             "Pengenalan Jenis Matriks A",
-            "Vector Addition",
-            "Vector Subtraction",
+            "Pengenalan Jenis Matriks B",
+            "Penjumlahan Vektor",
+            "Pengurangan Vektor",
             "Dot Product (A·B)",
-            "Cross Product (A×B)"
+            "Cross Product (A×B)",
+            "Panjang (Norma) Vektor u",
+            "Panjang (Norma) Vektor v",
+            "Proyeksi u ke arah v",
+            "Sudut antara u dan v"
         ])
         op_layout.addWidget(self.op_combo)
         layout.addLayout(op_layout)
@@ -99,7 +110,7 @@ class WindowProses(QWidget):
         self.load_btn.clicked.connect(self.on_load_case)
         self.save_hist_btn = QPushButton("Save Result to History")
         self.save_hist_btn.clicked.connect(self.on_save_history)
-        self.refresh_btn = QPushButton("🔄 Refresh Daftar Matriks")
+        self.refresh_btn = QPushButton("Refresh Daftar Matriks")
         self.refresh_btn.clicked.connect(self.refresh_matrix_list)
 
         for b in [self.solve_btn, self.export_btn, self.save_btn, self.load_btn, self.save_hist_btn, self.refresh_btn]:
@@ -110,16 +121,21 @@ class WindowProses(QWidget):
         self.steps_area = QTextEdit()
         self.steps_area.setReadOnly(True)
         self.steps_area.setPlaceholderText("Langkah dan hasil operasi akan tampil di sini...")
-        layout.addWidget(self.steps_area, stretch=1)
+        font = self.steps_area.font()
+        font.setPointSize(12)
+        self.steps_area.setFont(font)
+        self.steps_area.setMinimumHeight(120)
+        layout.addWidget(self.steps_area, stretch=2)
 
         # Tombol kembali ke menu
         back_layout = QHBoxLayout()
-        self.back_btn = QPushButton("⬅️  Kembali ke Menu Utama")
+        self.back_btn = QPushButton("Kembali ke Menu Utama")
         self.back_btn.clicked.connect(lambda: self.stacked.setCurrentIndex(0))
         back_layout.addWidget(self.back_btn)
         layout.addLayout(back_layout)
 
         self.setLayout(layout)
+
 
     # ====================================================
     # REFRESH DROPDOWN MATRIX LIST
@@ -139,6 +155,7 @@ class WindowProses(QWidget):
             self.comboA.addItem("(Belum ada matriks tersimpan)")
             self.comboB.addItem("(Belum ada matriks tersimpan)")
 
+
     # ====================================================
     # PARSING INPUT
     # ====================================================
@@ -151,6 +168,7 @@ class WindowProses(QWidget):
         vals = [float(x) for x in txt.split()]
         return np.array(vals, dtype=float)
 
+
     # ====================================================
     # OPERASI UTAMA
     # ====================================================
@@ -159,12 +177,14 @@ class WindowProses(QWidget):
             op = self.op_combo.currentText()
             out = []
 
+            # --- Ambil matriks A ---
             if self.comboA.currentIndex() > 0:
                 A = self.stacked.matrices[self.comboA.currentText()]
             else:
                 txtA = self.textA.toPlainText().strip()
                 A = self.parse_matrix(txtA) if "\n" in txtA else self.parse_vector(txtA)
 
+            # --- Ambil matriks B ---
             B = None
             if self.comboB.currentIndex() > 0:
                 B = self.stacked.matrices[self.comboB.currentText()]
@@ -173,11 +193,12 @@ class WindowProses(QWidget):
                 B = self.parse_matrix(txtB) if "\n" in txtB else self.parse_vector(txtB)
 
             # ==== operasi ====
-            if op == "Solve Non-homogeneous (A·x = B)":
+            if op == "Non-homogen (A·x = B)":
                 res, steps, status = solve_obe(A, B)
                 out.append(f"Status: {status}")
                 out.extend(steps)
-            elif op == "Solve Homogeneous (A·x = 0)":
+
+            elif op == "Homogen (A·x = 0)":
                 free_vars, basis = solve_homogeneous(A)
                 if not basis:
                     out.append("Hanya solusi trivial (x=0).")
@@ -185,50 +206,80 @@ class WindowProses(QWidget):
                     out.append(f"Free vars: {free_vars}")
                     for i, v in enumerate(basis):
                         out.append(f"Basis vector {i+1}: {v}")
+
             elif op == "A + B":
                 out.append("A + B =\n" + cetak_matriks(A + B))
             elif op == "A - B":
                 out.append("A - B =\n" + cetak_matriks(A - B))
             elif op == "A × B":
                 out.append("A × B =\n" + cetak_matriks(A @ B))
+            elif op == "B × A":
+                out.append("B × A =\n" + cetak_matriks(B @ A))
             elif op == "Transpose (Aᵗ)":
                 out.append("Aᵗ =\n" + cetak_matriks(A.T))
-            elif op == "Determinant of A":
+            elif op == "Transpose (Bᵗ)":
+                out.append("Bᵗ =\n" + cetak_matriks(B.T))
+            elif op == "Determinan A":
                 out.append(f"det(A) = {det(A)}")
-            elif op == "Inverse of A":
+            elif op == "Determinan B":
+                out.append(f"det(B) = {det(B)}")
+            elif op == "Inverse A":
                 out.append("A⁻¹ =\n" + cetak_matriks(inverse(A)))
-            elif op == "RREF Only":
+            elif op == "Inverse B":
+                out.append("B⁻¹ =\n" + cetak_matriks(inverse(B)))
+            elif op == "OBE":
                 R, piv, steps = rref_with_steps(A)
-                out.append("RREF Result:\n" + cetak_matriks(R))
+                out.append("Hasil OBE:\n" + cetak_matriks(R))
                 out.extend(steps)
             elif op == "Pengenalan Jenis Matriks A":
-                rows, cols = A.shape
-                info = [f"Ukuran: {rows}×{cols}"]
-                if rows == cols:
-                    info.append("Persegi ✅")
-                    if np.allclose(A, np.eye(rows)): info.append("→ Identitas")
-                    if np.allclose(A, A.T): info.append("→ Simetris")
-                    if np.allclose(A, np.triu(A)): info.append("→ Segitiga Atas")
-                    if np.allclose(A, np.tril(A)): info.append("→ Segitiga Bawah")
-                    if np.count_nonzero(A - np.diag(np.diag(A))) == 0: info.append("→ Diagonal")
-                    info.append("→ Singular (det=0)" if round(det(A)) == 0 else "→ Non-Singular (det≠0)")
-                else:
-                    info.append("Bukan persegi ❌")
+                info = self.analyze_matrix(A, "A")
                 out.extend(info)
-            elif op == "Vector Addition":
+            elif op == "Pengenalan Jenis Matriks B":
+                info = self.analyze_matrix(B, "B")
+                out.extend(info)
+            elif op == "Penjumlahan Vektor":
                 out.append(f"A + B = {A + B}")
-            elif op == "Vector Subtraction":
+            elif op == "Pengurangan Vektor":
                 out.append(f"A - B = {A - B}")
             elif op == "Dot Product (A·B)":
                 out.append(f"A·B = {np.dot(A, B)}")
             elif op == "Cross Product (A×B)":
                 out.append(f"A×B = {np.cross(A, B)}")
+            elif op == "Panjang (Norma) Vektor A":
+                out.append(f"‖A‖ = {norm(A):.6f}")
+            elif op == "Panjang (Norma) Vektor B":
+                out.append(f"‖B‖ = {norm(B):.6f}")
+            elif op == "Proyeksi u ke arah v":
+                proj = projection(A, B)
+                out.append(f"Proyeksi A ke arah B = {proj}")
+            elif op == "Sudut antara u dan v":
+                theta = angle_between(A, B)
+                out.append(f"Sudut antara A dan B = {np.degrees(theta):.4f}°")
 
             self.steps_area.setPlainText("\n".join(out))
             self.last_steps = out
 
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
+
+
+    def analyze_matrix(self, M, label="A"):
+        """Analisis jenis matriks"""
+        info = [f"Jenis Matriks {label}:"]
+        rows, cols = M.shape
+        info.append(f"Ukuran: {rows}×{cols}")
+        if rows == cols:
+            info.append("Persegi")
+            if np.allclose(M, np.eye(rows)): info.append("Identitas")
+            if np.allclose(M, M.T): info.append("Simetris")
+            if np.allclose(M, np.triu(M)): info.append("Segitiga Atas")
+            if np.allclose(M, np.tril(M)): info.append("Segitiga Bawah")
+            if np.count_nonzero(M - np.diag(np.diag(M))) == 0: info.append("Diagonal")
+            info.append("Singular (det=0)" if round(det(M)) == 0 else "Non-Singular (det≠0)")
+        else:
+            info.append("Bukan persegi")
+        return info
+
 
     # ====================================================
     # EXPORT / SAVE / LOAD / HISTORY

@@ -10,12 +10,13 @@ from PyQt6.QtCore import Qt
 
 
 class QuizWindow(QWidget):
-    def __init__(self, quiz_file_path):
+    def __init__(self, quiz_file_path, stacked=None):
         super().__init__()
         self.setWindowTitle("Kuis Kalkulator Matriks")
         self.resize(550, 400)
 
         self.quiz_file_path = quiz_file_path
+        self.stacked = stacked  
         self.questions = self.load_questions(quiz_file_path)
         if not self.questions:
             QMessageBox.warning(self, "Error", "Tidak ada pertanyaan ditemukan.")
@@ -29,6 +30,8 @@ class QuizWindow(QWidget):
         # --- Layout utama ---
         self.layout = QVBoxLayout()
         self.question_label = QLabel()
+        self.layout.addWidget(self.question_label)
+
         self.option_group = QButtonGroup(self)
         self.option_buttons = []
 
@@ -55,8 +58,15 @@ class QuizWindow(QWidget):
         btn_layout.addWidget(self.import_button)
         btn_layout.addWidget(self.export_button)
 
-        self.layout.addWidget(self.question_label)
         self.layout.addLayout(btn_layout)
+
+        # --- Tombol kembali ke menu utama ---
+        back_layout = QHBoxLayout()
+        self.back_button = QPushButton("Kembali ke Menu Utama")
+        self.back_button.clicked.connect(self.go_back)
+        back_layout.addWidget(self.back_button, alignment=Qt.AlignmentFlag.AlignRight)
+        self.layout.addLayout(back_layout)
+
         self.setLayout(self.layout)
 
         self.load_question()
@@ -74,7 +84,6 @@ class QuizWindow(QWidget):
         except Exception as e:
             print(f"Gagal memuat file kuis: {e}")
             return []
-
 
     def save_questions(self):
         """Simpan ulang pertanyaan ke file utama."""
@@ -146,7 +155,6 @@ class QuizWindow(QWidget):
             with open(file_path, "r", encoding="utf-8") as f:
                 imported_questions = json.load(f)
 
-            # Validasi struktur data
             if not isinstance(imported_questions, list):
                 raise ValueError("Format file tidak valid (harus berupa list).")
 
@@ -175,6 +183,14 @@ class QuizWindow(QWidget):
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Gagal export file: {e}")
 
+    # -------------------- FITUR BACK KE MENU --------------------
+    def go_back(self):
+        """Kembali ke menu utama."""
+        if self.stacked is not None:
+            self.stacked.setCurrentIndex(0)
+        else:
+            self.close()
+
 
 # -------------------- WINDOW TAMBAH PERTANYAAN --------------------
 
@@ -189,9 +205,12 @@ class AddQuizWindow(QWidget):
 
         layout = QVBoxLayout()
 
+        layout.addWidget(QLabel("Pertanyaan:"))
         self.q_input = QTextEdit()
         self.q_input.setPlaceholderText("Masukkan teks pertanyaan di sini...")
+        layout.addWidget(self.q_input)
 
+        layout.addWidget(QLabel("Pilihan Jawaban:"))
         self.option_inputs = []
         for i in range(4):
             opt = QLineEdit()
@@ -201,14 +220,10 @@ class AddQuizWindow(QWidget):
 
         self.answer_input = QLineEdit()
         self.answer_input.setPlaceholderText("Jawaban yang benar (harus sama dengan salah satu opsi)")
+        layout.addWidget(self.answer_input)
 
         self.save_button = QPushButton("Simpan Pertanyaan")
         self.save_button.clicked.connect(self.save_question)
-
-        layout.addWidget(QLabel("Pertanyaan:"))
-        layout.addWidget(self.q_input)
-        layout.addWidget(QLabel("Pilihan Jawaban:"))
-        layout.addWidget(self.answer_input)
         layout.addWidget(self.save_button)
 
         self.setLayout(layout)

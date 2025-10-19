@@ -16,7 +16,7 @@ if __name__ == "__main__":
     menu_page = MenuUtama(stacked)
     input_page = WindowInputGrid(stacked)
     process_page = WindowProses(stacked)
-    quiz_page = QuizWindow(os.path.join(os.path.dirname(__file__), "quiz_questions.json"))
+    quiz_page = QuizWindow(os.path.join(os.path.dirname(__file__), "quiz_questions.json"), stacked)
     history_page = HistoryWindow(stacked)
 
     stacked.addWidget(menu_page)     # index 0
@@ -25,7 +25,6 @@ if __name__ == "__main__":
     stacked.addWidget(quiz_page)     # index 3
     stacked.addWidget(history_page)  # index 4
 
-    # refresh dropdown otomatis saat masuk ke halaman proses
     def update_before_show(index):
         if index == 2 and hasattr(process_page, "refresh_matrix_list"):
             process_page.refresh_matrix_list()

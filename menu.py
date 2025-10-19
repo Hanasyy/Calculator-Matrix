@@ -15,8 +15,8 @@ class MenuUtama(QWidget):
         btn_layout = QVBoxLayout()
 
         # Buttons: Input, Process, Quiz, History, Exit
-        self.btn_input = QPushButton("Input / Matrices")
-        self.btn_proses = QPushButton("Process / Solver")
+        self.btn_input = QPushButton("Input Matriks")
+        self.btn_proses = QPushButton("Operasi Matriks")
         self.btn_quiz = QPushButton("Quiz")
         self.btn_history = QPushButton("History")
         self.btn_exit = QPushButton("Exit")

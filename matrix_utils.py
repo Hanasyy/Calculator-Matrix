@@ -1,204 +1,212 @@
+import re
 import numpy as np
-from copy import deepcopy
 
+# =======================================
+# Utility format & cetak matriks
+# =======================================
 def fmt(x):
+    """Format angka agar tampil rapi dan mudah dibaca."""
     if abs(x - round(x)) < 1e-9:
         return str(int(round(x)))
     return f"{x:.4f}"
 
 def cetak_matriks(M):
-    M = np.array(M)
-    rows = []
-    for r in M:
-        rows.append(" ".join(fmt(x) for x in r))
-    return "\n".join(rows)
+    """Mengembalikan string representasi matriks."""
+    return "\n".join(" ".join(fmt(x) for x in row) for row in M)
 
 def _row_to_str(r):
     return " | ".join(fmt(x) for x in r)
 
+# =======================================
+# RREF (Gauss-Jordan) dinamis dengan langkah
+# =======================================
 def rref_with_steps(A_in, B_in=None, eps=1e-12):
     """
-    Return RREF of A (or augmented [A|B]) with step-by-step descriptions.
-    If B_in provided, treat augmented matrix.
-    Returns: (RREF_matrix, pivots, steps)
+    Mengubah matriks A (atau [A|B]) menjadi bentuk eselon baris tereduksi (RREF).
+    Dinamis untuk ukuran berapapun, disertai langkah-langkah operasi baris elementer.
     """
     A = np.array(A_in, dtype=float)
-    steps = []
-    if B_in is None:
-        M = A.copy()
-    else:
+    if B_in is not None:
         B = np.array(B_in, dtype=float).reshape(-1, 1)
-        M = np.hstack([A.copy(), B])
+        M = np.hstack([A, B])
+    else:
+        M = A.copy()
 
-    rows, cols = M.shape
-    n = rows
-    m = cols
-    pivot_cols = []
-    r = 0
-    for c in range(m if B_in is None else m-1):
-        if r >= n:
+    n_rows, n_cols = M.shape
+    steps = []
+    pivot_row = 0
+
+    for pivot_col in range(n_cols - (1 if B_in is not None else 0)):
+        # Cari baris pivot (nilai absolut terbesar)
+        max_row = np.argmax(np.abs(M[pivot_row:, pivot_col])) + pivot_row
+        if abs(M[max_row, pivot_col]) < eps:
+            continue  # tidak ada pivot di kolom ini
+
+        # Tukar baris jika perlu
+        if pivot_row != max_row:
+            M[[pivot_row, max_row]] = M[[max_row, pivot_row]]
+            steps.append(f"Tukar baris {pivot_row+1} ↔ baris {max_row+1}\n{cetak_matriks(M)}")
+
+        # Normalisasi baris pivot
+        pivot_val = M[pivot_row, pivot_col]
+        M[pivot_row] /= pivot_val
+        steps.append(f"Normalisasi baris {pivot_row+1} (÷ {fmt(pivot_val)})\n{cetak_matriks(M)}")
+
+        # Hilangkan elemen lain di kolom pivot
+        for r in range(n_rows):
+            if r != pivot_row and abs(M[r, pivot_col]) > eps:
+                factor = M[r, pivot_col]
+                M[r] -= factor * M[pivot_row]
+                steps.append(f"Baris {r+1} - ({fmt(factor)} × baris {pivot_row+1})\n{cetak_matriks(M)}")
+
+        pivot_row += 1
+        if pivot_row == n_rows:
             break
-        # find pivot
-        pivot = None
-        maxrow = r + np.argmax(np.abs(M[r:, c]))
-        if abs(M[maxrow, c]) > eps:
-            pivot = maxrow
-        if pivot is None:
-            continue
-        if pivot != r:
-            M[[r, pivot]] = M[[pivot, r]]
-            steps.append(f"Swap row {r+1} with row {pivot+1}: \n{_row_to_str(M[r])}\n{_row_to_str(M[pivot])}")
-        # normalize pivot row
-        pv = M[r, c]
-        M[r] = M[r] / pv
-        steps.append(f"Normalize row {r+1} by dividing by {fmt(pv)}: \n{_row_to_str(M[r])}")
-        # eliminate other rows
-        for i in range(n):
-            if i != r and abs(M[i, c]) > eps:
-                factor = M[i, c]
-                M[i] = M[i] - factor * M[r]
-                steps.append(f"Eliminate column {c+1} in row {i+1} using row {r+1} * {fmt(factor)} -> row {i+1}: \n{_row_to_str(M[i])}")
-        pivot_cols.append(c)
-        r += 1
-    # final rounding small values to zero
-    M[np.abs(M) < eps] = 0.0
-    return M, pivot_cols, steps
 
+    M[np.abs(M) < eps] = 0.0
+    steps.append("\n=== HASIL RREF ===\n" + cetak_matriks(M))
+    return M, steps
+
+# =======================================
+# OBE solver umum (A·x = B)
+# =======================================
 def solve_obe(A, B):
     """
-    Solve linear system A x = B using Gauss-Jordan (RREF) with steps.
-    Returns: (solution_vector_or_None, steps, status)
-    status: "unique", "infinite", "inconsistent"
+    Menyelesaikan sistem linear A·x = B dengan eliminasi Gauss-Jordan.
+    Dinamis untuk ukuran apapun.
     """
     A = np.array(A, dtype=float)
     B = np.array(B, dtype=float).reshape(-1, 1)
-    M, pivots, steps = rref_with_steps(A, B)
-    rows, cols = M.shape
-    n = rows
-    vars_count = cols - 1
-    # check for inconsistency: a row [0 ... 0 | b] with b != 0
-    for i in range(n):
-        if all(abs(M[i, j]) < 1e-9 for j in range(vars_count)) and abs(M[i, -1]) > 1e-9:
-            steps.append(f"Inconsistent row found at row {i+1}: { _row_to_str(M[i]) }")
-            return None, steps, "inconsistent"
-    # determine pivots
-    pivot_cols = []
-    for i in range(n):
-        found = False
-        for j in range(vars_count):
-            if abs(M[i, j] - 1) < 1e-9 and all(abs(M[i, k]) < 1e-9 for k in range(j)) == False or abs(M[i, j]) == 1:
-                # better find columns where there is a 1 and rest zeros in that column
-                if abs(M[i, j] - 1) < 1e-8 and all(abs(M[k, j]) < 1e-8 for k in range(n) if k != i):
-                    pivot_cols.append(j)
-                    found = True
-                    break
-        # continue
-    pivot_cols = sorted(set(pivot_cols))
-    free_vars = [j for j in range(vars_count) if j not in pivot_cols]
+    M, steps = rref_with_steps(A, B)
 
-    if len(free_vars) == 0 and len(pivot_cols) == vars_count:
-        # unique solution: read off last column
-        x = np.zeros(vars_count)
-        for i in range(n):
-            # find pivot col
-            for j in range(vars_count):
-                if abs(M[i, j] - 1) < 1e-9:
-                    x[j] = M[i, -1]
-                    break
-        steps.append("Unique solution found.")
-        return x, steps, "unique"
-    else:
-        # infinite solutions: express parametric form
-        steps.append(f"Free variables: {free_vars}")
-        # construct parametric solution: x = sum t_k * v_k + particular (if any)
-        # attempt to extract particular solution (set free vars = 0)
-        particular = np.zeros(vars_count)
-        for i in range(n):
-            # find pivot column
-            pivot_col = None
-            for j in range(vars_count):
-                if abs(M[i, j] - 1) < 1e-9 and all(abs(M[k, j]) < 1e-9 for k in range(n) if k != i):
-                    pivot_col = j
-                    break
-            if pivot_col is not None:
-                particular[pivot_col] = M[i, -1]
-        # basis vectors for each free var
-        basis = []
-        for free in free_vars:
-            vec = np.zeros(vars_count)
-            vec[free] = 1.0
-            # set other variables according to -coefficients in rref
-            for i in range(n):
-                # pivot col in this row?
-                pivot_col = None
-                for j in range(vars_count):
-                    if abs(M[i, j] - 1) < 1e-9 and all(abs(M[k, j]) < 1e-9 for k in range(n) if k != i):
-                        pivot_col = j
-                        break
-                if pivot_col is not None:
-                    vec[pivot_col] = -M[i, free]
-            basis.append(vec)
-        steps.append(f"Particular solution (free vars = 0): [{', '.join(fmt(x) for x in particular)}]")
-        for idx, free in enumerate(free_vars):
-            steps.append(f"Parameter t{idx+1} corresponds to variable x{free+1} with basis vector: [{', '.join(fmt(x) for x in basis[idx])}]")
-        return (particular, free_vars, basis), steps, "infinite"
+    n_rows, n_cols = M.shape
+    n_vars = n_cols - 1
+    eps = 1e-9
 
+    # Deteksi sistem tidak konsisten
+    for i in range(n_rows):
+        if np.all(np.abs(M[i, :n_vars]) < eps) and abs(M[i, -1]) > eps:
+            steps.append(f"Baris {i+1} menunjukkan sistem tak konsisten.")
+            return None, steps, "tidak_konsisten"
+
+    # Temukan kolom pivot
+    pivots = []
+    for i in range(n_rows):
+        for j in range(n_vars):
+            if abs(M[i, j] - 1) < eps and np.all(np.abs(np.delete(M[:, j], i)) < eps):
+                pivots.append(j)
+                break
+    free_vars = [j for j in range(n_vars) if j not in pivots]
+
+    # Solusi unik
+    if len(pivots) == n_vars:
+        x = np.zeros(n_vars)
+        for i in range(len(pivots)):
+            x[pivots[i]] = M[i, -1]
+        steps.append("\n=== Solusi unik ===")
+        for i, val in enumerate(x, start=1):
+            steps.append(f"x{i} = {fmt(val)}")
+        return x, steps, "unik"
+
+    # Solusi tak hingga
+    particular = np.zeros(n_vars)
+    for i in range(n_rows):
+        row = M[i, :n_vars]
+        if 1 in row:
+            pivot_col = np.where(row == 1)[0][0]
+            particular[pivot_col] = M[i, -1]
+
+    basis = []
+    for f in free_vars:
+        vec = np.zeros(n_vars)
+        vec[f] = 1
+        for i in range(n_rows):
+            row = M[i, :n_vars]
+            if 1 in row:
+                pivot_col = np.where(row == 1)[0][0]
+                vec[pivot_col] = -M[i, f]
+        basis.append(vec)
+
+    steps.append("\n=== Solusi tak hingga ===")
+    steps.append(f"Variabel bebas: {[f'x{v+1}' for v in free_vars]}")
+    steps.append(f"x_partikular = [{', '.join(fmt(x) for x in particular)}]")
+    for i, b in enumerate(basis, 1):
+        steps.append(f"t{i} * [{', '.join(fmt(x) for x in b)}]")
+
+    return (particular, free_vars, basis), steps, "tak_hingga"
+
+# =======================================
+# Sistem homogen A·x = 0
+# =======================================
 def solve_homogeneous(A):
     """
-    Solve A x = 0. Return parametric solution as (free_vars, basis_vectors)
-    basis_vectors: list of vectors forming basis of nullspace
+    Menyelesaikan sistem homogen A·x = 0.
+    Menghasilkan variabel bebas & basis ruang null.
     """
     A = np.array(A, dtype=float)
-    # perform RREF on A only
-    R, pivots, steps = rref_with_steps(A, None)
-    rows, cols = R.shape
-    n = rows
-    vars_count = cols
-    pivot_cols = []
-    for i in range(n):
-        for j in range(vars_count):
-            if abs(R[i, j] - 1) < 1e-9 and all(abs(R[k, j]) < 1e-9 for k in range(n) if k != i):
-                pivot_cols.append(j)
-                break
-    free_vars = [j for j in range(vars_count) if j not in pivot_cols]
-    basis = []
-    if len(free_vars) == 0:
-        # only trivial solution
-        return [], []
-    for free in free_vars:
-        v = np.zeros(vars_count)
-        v[free] = 1.0
-        for i in range(n):
-            # locate pivot col
-            pivot_col = None
-            for j in range(vars_count):
-                if abs(R[i, j] - 1) < 1e-9 and all(abs(R[k, j]) < 1e-9 for k in range(n) if k != i):
-                    pivot_col = j
-                    break
-            if pivot_col is not None:
-                v[pivot_col] = -R[i, free]
-        basis.append(v)
-    return free_vars, basis
+    R, steps = rref_with_steps(A)
+    n_rows, n_cols = R.shape
+    eps = 1e-9
 
+    pivots = []
+    for i in range(n_rows):
+        for j in range(n_cols):
+            if abs(R[i, j] - 1) < eps and np.all(np.abs(np.delete(R[:, j], i)) < eps):
+                pivots.append(j)
+                break
+
+    free_vars = [j for j in range(n_cols) if j not in pivots]
+    basis = []
+
+    for f in free_vars:
+        v = np.zeros(n_cols)
+        v[f] = 1
+        for i in range(n_rows):
+            row = R[i, :n_cols]
+            if 1 in row:
+                pivot_col = np.where(row == 1)[0][0]
+                v[pivot_col] = -R[i, f]
+        basis.append(v)
+
+    steps.append("\n=== Ruang Null ===")
+    if basis:
+        for i, b in enumerate(basis, 1):
+            steps.append(f"Basis {i}: [{', '.join(fmt(x) for x in b)}]")
+    else:
+        steps.append("Hanya solusi trivial (semua nol).")
+
+    return free_vars, basis, steps
+
+# =======================================
+# Operasi matriks umum
+# =======================================
 def det(A):
-    return np.linalg.det(np.array(A, dtype=float))
+    """Determinannya dinamis."""
+    return float(np.linalg.det(np.array(A, dtype=float)))
 
 def inverse(A):
+    """Invers matriks dinamis."""
     A = np.array(A, dtype=float)
     if abs(np.linalg.det(A)) < 1e-12:
-        raise ValueError("Matrix singular.")
+        raise ValueError("Matriks singular — tidak memiliki invers.")
     return np.linalg.inv(A)
 
-# vector utilities
+def transpose(A):
+    """Transpose dinamis."""
+    return np.array(A, dtype=float).T
+
+def rank(A):
+    """Menghitung rank matriks secara dinamis."""
+    return np.linalg.matrix_rank(np.array(A, dtype=float))
+
+# =======================================
+# Operasi vektor dinamis
+# =======================================
 def vec_add(u, v):
-    u = np.array(u, dtype=float)
-    v = np.array(v, dtype=float)
-    return u + v
+    return np.array(u, dtype=float) + np.array(v, dtype=float)
 
 def vec_sub(u, v):
-    u = np.array(u, dtype=float)
-    v = np.array(v, dtype=float)
-    return u - v
+    return np.array(u, dtype=float) - np.array(v, dtype=float)
 
 def dot(u, v):
     return float(np.dot(u, v))
@@ -207,14 +215,12 @@ def cross(u, v):
     return np.cross(u, v)
 
 def norm(u):
-    u = np.array(u, dtype=float)
-    return float(np.linalg.norm(u))
+    return float(np.linalg.norm(np.array(u, dtype=float)))
 
 def projection(u, v):
-    # projection of u onto v (vector)
     v = np.array(v, dtype=float)
     if np.allclose(v, 0):
-        raise ValueError("Cannot project onto zero vector")
+        raise ValueError("Tidak dapat memproyeksikan ke vektor nol.")
     return (np.dot(u, v) / np.dot(v, v)) * v
 
 def angle_between(u, v):
